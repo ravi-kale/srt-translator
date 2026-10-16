@@ -77,7 +77,7 @@ Effort = Literal["low", "medium", "high"]
 
 
 class RunConfig(BaseModel):
-    mode: PipelineMode = "hybrid"
+    mode: PipelineMode = "all_deepseek"
     stage1_provider: Stage1Provider = "gemini"
     stage3_provider: Stage3Provider = "claude"
 

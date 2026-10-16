@@ -70,7 +70,7 @@ export function modelLabel(model: string): string {
 }
 
 export const FALLBACK_DEFAULTS: RunConfig = {
-  mode: "hybrid",
+  mode: "all_deepseek",
   stage1_provider: "gemini",
   stage3_provider: "claude",
   deepseek_model: "deepseek-flash",
