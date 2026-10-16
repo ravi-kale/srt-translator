@@ -1,0 +1,43 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "backend/.venv/bin/uvicorn",
+      "runtimeArgs": ["main:app", "--app-dir", "backend", "--host", "127.0.0.1", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "mock-llm",
+      "runtimeExecutable": "backend/.venv/bin/python",
+      "runtimeArgs": ["backend/tests/mock_llm_server.py"],
+      "port": 8099
+    },
+    {
+      "name": "backend-mock",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "DEEPSEEK_API_KEY=mock",
+        "GEMINI_API_KEY=mock",
+        "DEEPSEEK_BASE_URL=http://127.0.0.1:8099/v1",
+        "GEMINI_BASE_URL=http://127.0.0.1:8099/v1",
+        "SUBTRANS_DB_PATH=backend/data/mock.db",
+        "backend/.venv/bin/uvicorn",
+        "main:app",
+        "--app-dir",
+        "backend",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000
+    }
+  ]
+}

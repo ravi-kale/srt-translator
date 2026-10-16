@@ -1,0 +1,17 @@
+# Never upload secrets or local state.
+.env
+.env.*
+**/.env
+**/.env.*
+backend/data/
+**/*.db
+**/*.db-*
+# Local tooling and build output (rebuilt on Vercel).
+backend/.venv/
+**/node_modules/
+frontend/dist/
+public/
+**/__pycache__/
+**/*.pyc
+.claude/
+backend/tests/
