@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Literal
 
@@ -66,6 +67,7 @@ class OpenAICompatClient:
         self.reasoning_effort = reasoning_effort
         self.extra_body = extra_body or {}
         # Retries are handled by call_with_retries so there is a single retry policy.
+        self.timeout = timeout
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
 
     def _response_format(self, schema: dict[str, Any] | None, schema_name: str) -> dict[str, Any]:
@@ -96,7 +98,10 @@ class OpenAICompatClient:
             kwargs["extra_body"] = self.extra_body
 
         try:
-            resp = await self._client.chat.completions.create(**kwargs)
+            # wait_for bounds the whole call: the HTTP read timeout alone restarts on every keep-alive byte.
+            resp = await asyncio.wait_for(self._client.chat.completions.create(**kwargs), self.timeout)
+        except TimeoutError:
+            raise LLMError(f"{self.provider}: no complete response within {self.timeout:.0f}s", retryable=True) from None
         except (openai.APITimeoutError, openai.APIConnectionError) as exc:
             raise LLMError(f"{self.provider}: connection error: {exc}", retryable=True) from exc
         except openai.RateLimitError as exc:

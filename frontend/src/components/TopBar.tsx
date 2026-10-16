@@ -1,4 +1,4 @@
-import { BookOpenText, Clapperboard, FilePlus2, LogOut, Moon, Settings2, Sun, X } from "lucide-react";
+import { BookOpenText, Clapperboard, FilePlus2, LogOut, Moon, Settings2, Sparkles, Sun, X } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Estimate, JobDetail } from "../types";
 import { CostBadge } from "./CostBadge";
@@ -18,6 +18,8 @@ export function TopBar({
   onContextHints,
   pauseAfterBible,
   onPauseAfterBible,
+  qaEnabled,
+  onQaEnabled,
   estimate,
   estimating,
   primary,
@@ -39,6 +41,8 @@ export function TopBar({
   onContextHints: (v: string) => void;
   pauseAfterBible: boolean;
   onPauseAfterBible: (v: boolean) => void;
+  qaEnabled: boolean;
+  onQaEnabled: (v: boolean) => void;
   estimate: Estimate | null;
   estimating: boolean;
   primary: PrimaryAction | null;
@@ -119,6 +123,19 @@ export function TopBar({
           )}
         >
           <BookOpenText size={14} /> Review Bible first
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onQaEnabled(!qaEnabled)}
+          aria-pressed={qaEnabled}
+          title={qaEnabled ? "Stage 3 QA critic runs after translation (click to skip it)" : "Stage 3 QA critic is skipped (click to run it)"}
+          className={cx(
+            "inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition",
+            qaEnabled ? "border-qa/50 bg-qa-soft text-qa" : "border-line bg-panel-2 text-muted hover:text-ink",
+          )}
+        >
+          <Sparkles size={14} /> QA critic {qaEnabled ? "on" : "off"}
         </button>
 
         <CostBadge estimate={estimate} usage={detail?.usage ?? null} spent={detail?.total_cost_usd ?? 0} loading={estimating} />

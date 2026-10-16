@@ -54,6 +54,7 @@ export interface RunConfig {
   stage2_temperature: number;
   stage1_reasoning_effort: "minimal" | "low" | "medium" | "high";
   qa_effort: Effort;
+  qa_enabled: boolean;
   claude_refusal_fallback: boolean;
   lanes: number;
   target_size: number;
@@ -139,6 +140,7 @@ export interface JobDetail {
 /** Incremental poll: full small state + only the blocks/logs changed since the cursors. */
 export interface JobChanges {
   job: JobSummary;
+  run_config: RunConfig | null;
   bible: Bible | null;
   usage: UsageTotals;
   total_cost_usd: number;

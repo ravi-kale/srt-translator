@@ -324,15 +324,15 @@ function Studio({ onSignOut }: { onSignOut?: () => void }) {
   const rerun = async (stage: 2 | 3, bible: Bible, dirty: boolean) => {
     if (!jobId) return;
     const ok = await confirm({
-      title: stage === 2 ? "Re-run Stage 2 + 3?" : "Re-run the Stage 3 critic?",
+      title: stage === 2 ? (config.qa_enabled ? "Re-run Stage 2 + 3?" : "Re-run Stage 2?") : "Re-run the Stage 3 critic?",
       body:
         stage === 2
-          ? "All machine translations and QA fixes are discarded and regenerated with the current Bible. Lines you edited by hand are kept."
+          ? `All machine translations${config.qa_enabled ? " and QA fixes" : ""} are discarded and regenerated with the current Bible. Lines you edited by hand are kept.`
           : "Current QA fixes are discarded and the critic reviews the DeepSeek drafts again. Lines you edited by hand are kept.",
       confirmLabel: "Re-run",
       tone: "danger",
     });
-    if (!ok || !keysOk(stage === 2 ? [2, 3] : [3])) return;
+    if (!ok || !keysOk(stage === 2 ? (config.qa_enabled ? [2, 3] : [2]) : [3])) return;
     setBusy(true);
     try {
       if (dirty) await api.putBible(jobId, bible);
@@ -421,6 +421,8 @@ function Studio({ onSignOut }: { onSignOut?: () => void }) {
         contextHints={settings.contextHints}
         onContextHints={settings.setContextHints}
         pauseAfterBible={config.pause_after_bible}
+        qaEnabled={config.qa_enabled}
+        onQaEnabled={(v) => settings.setConfig({ qa_enabled: v })}
         onPauseAfterBible={(v) => settings.setConfig({ pause_after_bible: v })}
         estimate={estimate}
         estimating={estimating}
@@ -451,6 +453,7 @@ function Studio({ onSignOut }: { onSignOut?: () => void }) {
           detail={detail}
           logs={job.logs}
           connected={job.connected}
+          qaEnabled={config.qa_enabled}
           onReviewBible={() => setDrawerOpen(true)}
           onResume={start}
         />
@@ -504,6 +507,7 @@ function Studio({ onSignOut }: { onSignOut?: () => void }) {
             onSave={saveBible}
             onApprove={approveBible}
             onRerun={rerun}
+            qaEnabled={config.qa_enabled}
           />
         )}
       </main>

@@ -108,7 +108,9 @@ def estimate_job(
     stages.append(_stage(2, config, s2, {"calls": len(batches)}, keys))
 
     # Stage 3 — windows of qa_window lines; system prefix cached after the first window.
-    windows = math.ceil(len(blocks) / config.qa_window) if blocks else 0
+    windows = math.ceil(len(blocks) / config.qa_window) if blocks and config.qa_enabled else 0
+    if not config.qa_enabled:
+        stages.append(_stage(3, config, Usage(input_tokens=0, output_tokens=0), {"calls": 0, "skipped": True}, keys))
     system3 = STAGE3_SYSTEM_TOKENS + int(bible_tokens * factor)
     window_body = sum(src_tokens[b.id] + trg_tokens[b.id] + LINE_OVERHEAD_TOKENS for b in blocks)
     s3 = Usage(input_tokens=system3 * windows + window_body, output_tokens=0)
@@ -118,9 +120,10 @@ def estimate_job(
     elif windows:
         s3.cache_hit_tokens = system3 * (windows - 1)
     # Sparse patches: assume ~8% of lines fixed, ~25 tokens of reason each, plus thinking overhead.
-    fixed = int(len(with_text) * 0.08)
+    fixed = int(len(with_text) * 0.08) if windows else 0
     s3.output_tokens = sum(int(avg_trg) + 35 for _ in range(fixed)) + windows * 600
-    stages.append(_stage(3, config, s3, {"calls": windows}, keys))
+    if config.qa_enabled:
+        stages.append(_stage(3, config, s3, {"calls": windows}, keys))
 
     total = round(sum(s["cost_usd"] for s in stages), 4)
     return {

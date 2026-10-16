@@ -56,7 +56,7 @@ function reducer(state: JobState, action: Action): JobState {
       const job = c.job.updated_at >= nd.job.updated_at ? c.job : nd.job;
       return {
         ...next,
-        detail: { ...nd, job, bible: c.bible, usage: c.usage, total_cost_usd: c.total_cost_usd },
+        detail: { ...nd, job, run_config: c.run_config, bible: c.bible, usage: c.usage, total_cost_usd: c.total_cost_usd },
       };
     }
     case "status":

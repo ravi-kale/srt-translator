@@ -1,6 +1,6 @@
 import asyncio
 
-from subtrans.models import Bible, BibleUpdate, GlossaryEntry, RunConfig, RunRequest
+from subtrans.models import Bible, BibleUpdate, GlossaryEntry, RerunRequest, RunConfig, RunRequest
 from subtrans.pipeline.orchestrator import JobConflict, JobManager, LeaseBusy
 from subtrans.store import JobStore
 
@@ -170,3 +170,51 @@ async def test_usage_and_estimate(manager, factory):
     live = await wait_done(manager, live.meta.id)
     assert live.meta.usage.stage2.calls == 3
     assert live.meta.usage.total_cost_usd > 0
+
+
+async def test_hard_step_limit_cuts_off_a_hung_call_and_resumes_next_step(manager, factory, monkeypatch):
+    """A call that never returns (e.g. a provider streaming keep-alives) must not outlive the step."""
+    import subtrans.pipeline.orchestrator as orch
+
+    monkeypatch.setattr(orch, "STEP_HARD_LIMIT", 0.3)
+    monkeypatch.setattr(orch, "MIN_CALL_WINDOW", 0.05)
+    manager.runner.schedule = _noop_schedule  # type: ignore[method-assign]
+    live = await manager.create("ep.srt", parsed(30), "Spanish", "")
+    factory.clients[1].delay = 5.0  # hangs far past the hard limit
+    await manager.start(live.meta.id, RunRequest())
+    run_id = (await manager.store.get_control(live.meta.id)).run_id
+    started = asyncio.get_running_loop().time()
+    assert await manager.step(live.meta.id, run_id, budget=0.1) is True  # cut off, more to do
+    assert asyncio.get_running_loop().time() - started < 1.5
+    assert (await manager.get(live.meta.id)).meta.status == "bible_running"
+    factory.clients[1].delay = 0.0
+    while await manager.step(live.meta.id, run_id, budget=5):
+        pass
+    assert (await manager.get(live.meta.id)).meta.status == "completed"
+
+
+async def test_qa_critic_can_be_turned_off(manager, factory):
+    live = await manager.create("ep.srt", parsed(60), "Spanish", "")
+    est = await manager.estimate(live.meta.id, RunRequest(config=RunConfig(qa_enabled=False)))
+    assert est["stages"][2]["skipped"] and est["qa_windows"] == 0
+    factory.missing = []
+    await manager.start(live.meta.id, RunRequest(config=RunConfig(qa_enabled=False)))
+    live = await wait_done(manager, live.meta.id)
+    assert live.meta.status == "completed" and live.meta.progress.stage == 4
+    assert factory.clients[3].calls == []
+    assert all(b.final_translation == b.draft_translation != "" for b in live.blocks)
+    # The critic can still be run later on demand, which turns it on for that run.
+    factory.clients[3].fix_ids = {"2"}
+    await manager.rerun(live.meta.id, RerunRequest(stage=3, config=RunConfig(qa_enabled=False)))
+    live = await wait_done(manager, live.meta.id)
+    assert live.meta.status == "completed" and live.by_id["2"].qa_fixed
+    assert len(factory.clients[3].calls) == 1
+
+
+async def test_qa_off_does_not_require_the_critic_key(manager, factory):
+    live = await manager.create("ep.srt", parsed(10), "Spanish", "")
+    seen: list[set[int]] = []
+    factory.missing_keys = lambda config, stages=None: seen.append(set(stages or ())) or []  # type: ignore[method-assign]
+    await manager.start(live.meta.id, RunRequest(config=RunConfig(qa_enabled=False)))
+    await wait_done(manager, live.meta.id)
+    assert 3 not in seen[0]

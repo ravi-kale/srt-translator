@@ -44,7 +44,7 @@ export function SettingsModal({
   const [refreshing, setRefreshing] = useState(false);
   const keys = appConfig?.keys;
   const providers = stageProviders(config, keys);
-  const required = new Set(Object.values(providers));
+  const required = new Set(([1, 2, 3] as Stage[]).filter((s) => s !== 3 || config.qa_enabled).map((s) => providers[s]));
   // Direct providers whose missing key is covered by routing their stage through OpenRouter.
   const covered = new Set(
     ([1, 2, 3] as Stage[]).filter((s) => viaOpenRouter(config, s, keys)).map((s) => stageProviders(config)[s]),
@@ -179,11 +179,22 @@ export function SettingsModal({
                   key={s}
                   className={cx(
                     "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]",
-                    ok ? "border-line bg-panel-2 text-ink-2" : "border-danger/40 bg-danger-soft text-danger",
+                    s === 3 && !config.qa_enabled
+                      ? "border-dashed border-line bg-panel-2 text-muted"
+                      : ok
+                        ? "border-line bg-panel-2 text-ink-2"
+                        : "border-danger/40 bg-danger-soft text-danger",
                   )}
                 >
-                  <span className="font-semibold">S{s}</span> {STAGE_TITLES[s]} → {modelLabel(stageModel(config, s, keys))}
-                  <span className="text-muted">({viaOpenRouter(config, s, keys) ? "via OpenRouter" : PROVIDER_LABEL[p]})</span>
+                  <span className="font-semibold">S{s}</span> {STAGE_TITLES[s]} →{" "}
+                  {s === 3 && !config.qa_enabled ? (
+                    "skipped"
+                  ) : (
+                    <>
+                      {modelLabel(stageModel(config, s, keys))}
+                      <span className="text-muted">({viaOpenRouter(config, s, keys) ? "via OpenRouter" : PROVIDER_LABEL[p]})</span>
+                    </>
+                  )}
                 </span>
               );
             })}
@@ -245,7 +256,15 @@ export function SettingsModal({
         </Section>
 
         <Section title="Stage 3 · QA critic">
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="mb-4">
+            <Toggle
+              checked={config.qa_enabled}
+              onChange={(v) => onChange({ qa_enabled: v })}
+              label="Run the QA critic"
+              description="Off: a run finishes after Stage 2 and the DeepSeek drafts become the final text. You can still run the critic later from the Bible panel."
+            />
+          </div>
+          <div className={cx("grid gap-3 sm:grid-cols-4", !config.qa_enabled && "pointer-events-none opacity-50")}>
             <Field label="CPS limit" hint="chars / second">
               <NumberInput value={config.cps_threshold} min={5} max={60} onChange={(v) => onChange({ cps_threshold: v })} />
             </Field>

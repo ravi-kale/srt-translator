@@ -47,9 +47,13 @@ from .stage3_qa import run_stage3
 
 log = logging.getLogger(__name__)
 
-# A step's lease outlives the longest function invocation (300 s on Vercel Hobby), so a step that
-# was killed mid-flight frees the job shortly afterwards.
-LEASE_TTL = 330.0
+# A running step renews its lease every watch_interval, so a short TTL is safe; if the step's
+# function is killed, the job is free again (and a redelivered step resumes it) within a minute.
+LEASE_TTL = 60.0
+# Queue mode: no LLM call may run past this point of a step, whatever the provider does
+# (OpenRouter keep-alive bytes defeat plain HTTP read timeouts). Below Vercel's 300 s limit.
+STEP_HARD_LIMIT = 270.0
+MIN_CALL_WINDOW = 15.0
 # Queue mode: a running job with no live lease and no write for this long lost its step chain.
 STALE_AFTER = 90.0
 
@@ -92,11 +96,19 @@ class LiveJob:
 class RunContext:
     """Everything a stage needs: live state, config, clients, persistence and logging."""
 
-    def __init__(self, manager: "JobManager", live: LiveJob, config: RunConfig, deadline: float | None = None):
+    def __init__(
+        self,
+        manager: "JobManager",
+        live: LiveJob,
+        config: RunConfig,
+        deadline: float | None = None,
+        hard_deadline: float | None = None,
+    ):
         self.manager = manager
         self.live = live
         self.config = config
-        self.deadline = deadline
+        self.deadline = deadline  # soft: stop starting new work
+        self.hard_deadline = hard_deadline  # hard: cut off in-flight calls
         self._clients: dict[int, LLMClient] = {}
         self._logs: list[tuple[float, str, str]] = []
 
@@ -111,7 +123,18 @@ class RunContext:
             if exc.usage is not None:
                 self.add_usage(stage, exc.usage)
 
-        result = await call_with_retries(fn, on_failed_attempt=on_failed, may_retry=lambda: not self.out_of_time)
+        async def bounded() -> LLMResult:
+            if self.hard_deadline is None:
+                return await fn()
+            remaining = self.hard_deadline - time.monotonic()
+            if remaining < MIN_CALL_WINDOW:
+                raise LLMError("step time limit reached; continuing in the next step", retryable=True)
+            try:
+                return await asyncio.wait_for(fn(), remaining)
+            except TimeoutError:
+                raise LLMError("call cut off at the step time limit; continuing in the next step", retryable=True) from None
+
+        result = await call_with_retries(bounded, on_failed_attempt=on_failed, may_retry=lambda: not self.out_of_time)
         self.add_usage(stage, result.usage)
         return result
 
@@ -353,6 +376,7 @@ class JobManager:
         await self._heal(job_id)
         return JobChanges(
             job=JobSummary.from_meta(meta),
+            run_config=meta.run_config,
             bible=meta.bible,
             usage=meta.usage,
             total_cost_usd=meta.usage.total_cost_usd,
@@ -411,7 +435,9 @@ class JobManager:
             stages.add(2)
         progress = live.meta.progress
         windows = -(-len(live.blocks) // config.qa_window) if live.blocks else 0
-        if progress.qa_window_size != config.qa_window or len(set(progress.qa_windows_done)) < windows:
+        if config.qa_enabled and (
+            progress.qa_window_size != config.qa_window or len(set(progress.qa_windows_done)) < windows
+        ):
             stages.add(3)
         return stages
 
@@ -478,8 +504,10 @@ class JobManager:
             raise JobConflict("Pause the job before re-running a stage.")
         if live.meta.bible is None:
             raise JobConflict("Run Stage 1 first.")
+        if req.stage == 3 and not req.config.qa_enabled:
+            req = req.model_copy(update={"config": req.config.model_copy(update={"qa_enabled": True})})
         self._apply_request(live, req)
-        stages = {2, 3} if req.stage == 2 else {3}
+        stages = ({2, 3} if req.config.qa_enabled else {2}) if req.stage == 2 else {3}
         missing = self.factory.missing_keys(req.config, stages)
         if missing:
             raise MissingKeys(missing)
@@ -519,7 +547,14 @@ class JobManager:
             live = await self.get(job_id)
             live.pause_requested = ctl.pause_requested
             config = live.meta.run_config or RunConfig()
-            ctx = RunContext(self, live, config, time.monotonic() + budget if budget else None)
+            now = time.monotonic()
+            ctx = RunContext(
+                self,
+                live,
+                config,
+                deadline=now + budget if budget else None,
+                hard_deadline=now + max(STEP_HARD_LIMIT, budget + MIN_CALL_WINDOW) if budget else None,
+            )
             self._active[job_id] = live
             watcher = asyncio.create_task(self._watch(live, owner, run_id))
             try:
@@ -592,6 +627,14 @@ class JobManager:
                 if ctx.out_of_time:
                     await ctx.save_meta()
                     return True
+
+            if not config.qa_enabled:
+                await self.store.set_run(meta.id, None)
+                meta.progress.stage = 4
+                meta.progress.finished_at = time.time()
+                ctx.log(f"Pipeline complete — QA critic skipped (off in Settings), total cost ${meta.usage.total_cost_usd:.4f}")
+                await self._set_status(live, "completed")
+                return False
 
             if meta.status != "qa_running":
                 await self._set_status(live, "qa_running")

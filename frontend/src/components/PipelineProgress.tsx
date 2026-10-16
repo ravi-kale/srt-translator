@@ -5,7 +5,7 @@ import type { JobDetail, LogEntry } from "../types";
 import { RUNNING } from "../types";
 import { Button, Spinner, cx } from "./ui";
 
-type StepState = "pending" | "active" | "done" | "error" | "paused";
+type StepState = "pending" | "active" | "done" | "error" | "paused" | "skipped";
 
 function Step({ icon, title, detail, state }: { icon: ReactNode; title: string; detail: string; state: StepState }) {
   return (
@@ -17,13 +17,14 @@ function Step({ icon, title, detail, state }: { icon: ReactNode; title: string; 
           state === "active" && "border-accent/50 bg-accent-soft text-accent",
           state === "paused" && "border-warn/40 bg-warn-soft text-warn",
           state === "error" && "border-danger/40 bg-danger-soft text-danger",
-          state === "pending" && "border-line bg-panel-2 text-muted",
+          (state === "pending" || state === "skipped") && "border-line bg-panel-2 text-muted",
+          state === "skipped" && "border-dashed opacity-70",
         )}
       >
         {state === "done" ? <Check size={15} /> : state === "active" ? <Spinner /> : icon}
       </span>
       <div className="min-w-0">
-        <div className={cx("text-xs font-semibold", state === "pending" ? "text-muted" : "text-ink")}>{title}</div>
+        <div className={cx("text-xs font-semibold", state === "pending" || state === "skipped" ? "text-muted" : "text-ink")}>{title}</div>
         <div className="truncate text-[11px] text-muted tabular-nums">{detail}</div>
       </div>
     </div>
@@ -44,12 +45,14 @@ export function PipelineProgress({
   detail,
   logs,
   connected,
+  qaEnabled,
   onReviewBible,
   onResume,
 }: {
   detail: JobDetail;
   logs: LogEntry[];
   connected: boolean;
+  qaEnabled: boolean;
   onReviewBible: () => void;
   onResume: () => void;
 }) {
@@ -66,6 +69,8 @@ export function PipelineProgress({
   const s3Done = new Set(p.qa_windows_done).size;
   const s2Complete = s2Total > 0 && s2Done === s2Total && p.stage >= 3;
   const s3Complete = status === "completed";
+  // Running/finished: show what that run did. Otherwise: what the next run will do (current settings).
+  const qaOff = running || status === "completed" ? detail.run_config?.qa_enabled === false : !qaEnabled;
 
   const s1: StepState = job.has_bible
     ? "done"
@@ -85,7 +90,9 @@ export function PipelineProgress({
         : halted && p.stage === 2
           ? "paused"
           : "pending";
-  const s3: StepState = s3Complete
+  const s3: StepState = qaOff
+    ? "skipped"
+    : s3Complete
     ? "done"
     : status === "qa_running"
       ? "active"
@@ -98,7 +105,9 @@ export function PipelineProgress({
   const pct = s3Complete
     ? 100
     : Math.round(
-        (job.has_bible ? 10 : 0) + (s2Total ? (70 * s2Done) / s2Total : 0) + (s3Total ? (20 * s3Done) / s3Total : 0),
+        (job.has_bible ? 10 : 0) +
+          (s2Total ? ((qaOff ? 90 : 70) * s2Done) / s2Total : 0) +
+          (s3Total && !qaOff ? (20 * s3Done) / s3Total : 0),
       );
 
   const elapsed = p.started_at ? ((p.finished_at ?? (running ? now / 1000 : p.started_at)) - p.started_at) : 0;
@@ -130,7 +139,9 @@ export function PipelineProgress({
             icon={<Sparkles size={15} />}
             title="Stage 3 · QA critic"
             state={s3}
-            detail={s3Total ? `Window ${s3Done}/${s3Total} · ${p.qa_fixes} fixes` : "Sparse patch review"}
+            detail={
+              qaOff ? "Skipped · off in Settings" : s3Total ? `Window ${s3Done}/${s3Total} · ${p.qa_fixes} fixes` : "Sparse patch review"
+            }
           />
         </div>
         <div className="flex items-center gap-3 text-xs text-muted">

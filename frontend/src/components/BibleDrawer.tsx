@@ -20,6 +20,7 @@ export function BibleDrawer({
   onSave,
   onApprove,
   onRerun,
+  qaEnabled,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -30,6 +31,7 @@ export function BibleDrawer({
   onSave: (b: Bible) => Promise<void>;
   onApprove: (b: Bible) => Promise<void>;
   onRerun: (stage: 2 | 3, b: Bible, dirty: boolean) => Promise<void>;
+  qaEnabled: boolean;
 }) {
   // `base` is the server version the local draft was last synced from.
   const [base, setBase] = useState<Bible | null>(bible);
@@ -244,7 +246,7 @@ export function BibleDrawer({
           {status !== "awaiting_review" && (
             <div className="grid grid-cols-2 gap-2">
               <Button size="sm" icon={<RefreshCcw size={13} />} disabled={locked} onClick={() => onRerun(2, draft, dirty)}>
-                Re-run Stage 2 + 3
+                {qaEnabled ? "Re-run Stage 2 + 3" : "Re-run Stage 2"}
               </Button>
               <Button size="sm" variant="qa" icon={<Sparkles size={13} />} disabled={locked} onClick={() => onRerun(3, draft, dirty)}>
                 Re-run Stage 3

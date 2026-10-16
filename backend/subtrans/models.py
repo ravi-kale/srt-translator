@@ -95,6 +95,8 @@ class RunConfig(BaseModel):
 
     stage1_reasoning_effort: Literal["minimal", "low", "medium", "high"] = "low"
     qa_effort: Effort = "medium"
+    # Stage 3 is optional: off, a run completes right after Stage 2 (drafts become the final text).
+    qa_enabled: bool = True
     claude_refusal_fallback: bool = True
 
     lanes: int = Field(4, ge=1, le=16)
@@ -247,6 +249,7 @@ class JobChanges(BaseModel):
     """Incremental poll result: the small job state in full, plus blocks/logs changed since the cursors."""
 
     job: JobSummary
+    run_config: RunConfig | None
     bible: Bible | None
     usage: UsageTotals
     total_cost_usd: float

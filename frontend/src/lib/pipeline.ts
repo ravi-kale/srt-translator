@@ -45,7 +45,8 @@ export function stageModel(c: RunConfig, stage: Stage, keys?: Keys): string {
 export function missingProviders(c: RunConfig, keys: Record<ProviderKey, boolean> | undefined, stages: Stage[] = [1, 2, 3]): ProviderKey[] {
   if (!keys) return [];
   const providers = stageProviders(c, keys);
-  return [...new Set(stages.map((s) => providers[s]))].filter((p) => !keys[p]);
+  const used = stages.filter((s) => s !== 3 || c.qa_enabled); // an off QA critic needs no key
+  return [...new Set(used.map((s) => providers[s]))].filter((p) => !keys[p]);
 }
 
 export const PROVIDER_LABEL: Record<ProviderKey, string> = {
@@ -84,6 +85,7 @@ export const FALLBACK_DEFAULTS: RunConfig = {
   stage2_temperature: 0.3,
   stage1_reasoning_effort: "low",
   qa_effort: "medium",
+  qa_enabled: true,
   claude_refusal_fallback: true,
   lanes: 4,
   target_size: 30,

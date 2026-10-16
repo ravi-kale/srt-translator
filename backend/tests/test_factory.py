@@ -50,3 +50,12 @@ def test_build_uses_openrouter_client_for_keyless_stage():
     client = factory.build(3, RunConfig(mode="hybrid"))
     assert client.provider == "openrouter"
     assert client.model == "anthropic/claude-sonnet-5.5"
+
+
+def test_deepseek_via_openrouter_has_thinking_off_in_every_stage():
+    factory = ClientFactory(lambda: _settings(openrouter_api_key="or-key"))
+    for stage in (1, 2, 3):
+        client = factory.build(stage, RunConfig(mode="all_deepseek"))
+        assert client.extra_body["reasoning"] == {"enabled": False}
+    claude = factory.build(3, RunConfig(mode="hybrid"))
+    assert claude.extra_body["reasoning"] == {"effort": "medium"}

@@ -120,10 +120,12 @@ class ClientFactory:
                 reasoning_effort=config.stage1_reasoning_effort if stage == 1 else config.qa_effort,
                 timeout=timeout,
             )
-        # OpenRouter: reasoning off for the Stage 2 translator; effort-controlled for Stages 1 & 3
-        # (Claude models reject any reasoning-disable form).
+        # OpenRouter: reasoning off for the Stage 2 translator and for DeepSeek everywhere; Gemini and
+        # Claude get effort-controlled reasoning in Stages 1 & 3 (Claude rejects any reasoning-disable form).
         reasoning: dict[str, Any]
-        if stage == 2:
+        if stage == 2 or "deepseek" in model.lower():
+            # DeepSeek runs with thinking off in every stage, as on the direct DeepSeek API (see
+            # deepseek_extra_body): long reasoning made each QA window take minutes.
             reasoning = {"enabled": False}
         elif stage == 1:
             reasoning = {"effort": "low" if config.stage1_reasoning_effort == "minimal" else config.stage1_reasoning_effort}
